@@ -1,0 +1,6 @@
+{
+  "name": "KOST PUTRI KREMBANGAN",
+  "description": "Dashboard manajemen pengelolaan properti KOST PUTRI KREMBANGAN dengan pelacakan penyewa, pembayaran sewa, laporan keuangan, dan koneksi ke database Supabase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
