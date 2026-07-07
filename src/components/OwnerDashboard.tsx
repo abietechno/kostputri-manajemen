@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Home, Users, Wallet, LogOut, Building2, TrendingUp, Settings, Wrench, ArrowUpRight, AlertCircle,
-  CreditCard, Moon, Sun, ArrowDownRight, BedDouble, Info, CheckCircle2, Search, MapPin, FileText
+  CreditCard, Moon, Sun, ArrowDownRight, BedDouble, Info, CheckCircle2, Search, MapPin, FileText, X
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { mockTenants, mockPayments, mockStats, mockEmployees, mockExpenses, mockOwner, mockProperty, mockRooms } from '../data';
@@ -18,6 +18,8 @@ type Tab = 'home' | 'property' | 'tenants' | 'finance' | 'employees' | 'settings
 export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }: OwnerDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [selectedTenant, setSelectedTenant] = useState<string | null>(null);
+  const [rooms, setRooms] = useState(mockRooms);
+  const [editingRoom, setEditingRoom] = useState<any | null>(null);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
@@ -182,7 +184,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
 
       <h3 className="font-heading font-bold text-lg text-text-main mb-4">Daftar Kamar</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mockRooms.map(room => (
+        {rooms.map(room => (
           <div key={room.id} className="bg-ios-card rounded-[24px] p-5 border border-border-subtle shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
             <div className="flex justify-between items-start mb-4">
               <div className="flex gap-3 items-center">
@@ -210,7 +212,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
 
             <div className="pt-4 border-t border-border-subtle flex justify-between items-center">
                <span className="font-heading font-bold text-text-main">{formatCurrency(room.pricePerMonth)}<span className="text-xs text-text-sec font-normal">/bln</span></span>
-               <button className="text-primary text-sm font-medium hover:underline">Edit</button>
+               <button onClick={() => setEditingRoom(room)} className="text-primary text-sm font-medium hover:underline">Edit</button>
             </div>
           </div>
         ))}
@@ -524,6 +526,61 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
                     </div>
                   );
                })()}
+            </motion.div>
+          </>
+        )}
+
+        {editingRoom && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm"
+              onClick={() => setEditingRoom(null)}
+            />
+            <motion.div 
+              initial={{ y: '100%', opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 left-0 right-0 w-full md:max-w-md bg-ios-card md:rounded-[32px] rounded-t-[32px] p-8 z-[70] border border-border-subtle overflow-y-auto max-h-[90vh]"
+            >
+              <div className="flex justify-between items-center mb-6">
+                 <h2 className="font-heading font-bold text-xl text-text-main">Edit Kamar {editingRoom.roomNumber}</h2>
+                 <button onClick={() => setEditingRoom(null)} className="p-2 text-text-sec hover:bg-bg-subtle rounded-full transition-colors"><X className="w-5 h-5"/></button>
+              </div>
+              
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const type = formData.get('type') as string;
+                const price = Number(formData.get('price'));
+                const status = formData.get('status') as any;
+                const facilitiesStr = formData.get('facilities') as string;
+                const facilities = facilitiesStr.split(',').map(f => f.trim()).filter(f => f);
+                
+                setRooms(prev => prev.map(r => r.id === editingRoom.id ? { ...r, type, pricePerMonth: price, status, facilities } : r));
+                setEditingRoom(null);
+              }} className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Tipe Kamar</label>
+                    <input name="type" defaultValue={editingRoom.type} required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Harga per Bulan (Rp)</label>
+                    <input name="price" type="number" defaultValue={editingRoom.pricePerMonth} required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Status</label>
+                    <select name="status" defaultValue={editingRoom.status} className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary">
+                      <option value="available">Kosong</option>
+                      <option value="occupied">Terisi</option>
+                      <option value="maintenance">Perbaikan</option>
+                    </select>
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Fasilitas (pisahkan dengan koma)</label>
+                    <textarea name="facilities" defaultValue={editingRoom.facilities.join(', ')} required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary min-h-[80px] resize-none"></textarea>
+                 </div>
+                 <button type="submit" className="w-full bg-primary text-ios-bg font-bold rounded-[20px] py-4 mt-6 hover:opacity-90 transition-opacity">Simpan Perubahan</button>
+              </form>
             </motion.div>
           </>
         )}
