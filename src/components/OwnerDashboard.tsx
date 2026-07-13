@@ -4,8 +4,10 @@ import {
   Home, Users, Wallet, LogOut, Building2, TrendingUp, Settings, Wrench, ArrowUpRight, AlertCircle,
   CreditCard, Moon, Sun, ArrowDownRight, BedDouble, Info, CheckCircle2, Search, MapPin, FileText, X, Crown
 } from 'lucide-react';
-import { ViewState } from '../types';
-import { mockTenants, mockPayments, mockStats, mockEmployees, mockExpenses, mockOwner, mockProperty, mockRooms } from '../data';
+import { ViewState, Room, Tenant, Payment, Employee, OperationalExpense, Property } from '../types';
+import { useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { mockOwner, mockProperty } from '../data';
 
 interface OwnerDashboardProps {
   onLogout: () => void;
@@ -18,8 +20,63 @@ type Tab = 'home' | 'property' | 'tenants' | 'finance' | 'employees' | 'settings
 export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }: OwnerDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [selectedTenant, setSelectedTenant] = useState<string | null>(null);
-  const [rooms, setRooms] = useState(mockRooms);
+    const [rooms, setRooms] = useState<Room[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [expenses, setExpenses] = useState<OperationalExpense[]>([]);
+  const [property, setProperty] = useState<Property | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const [roomsRes, tenantsRes, paymentsRes, employeesRes, expensesRes, propertiesRes] = await Promise.all([
+          supabase.from('rooms').select('*').order('room_number'),
+          supabase.from('tenants').select('*'),
+          supabase.from('payments').select('*').order('due_date', { ascending: false }),
+          supabase.from('employees').select('*'),
+          supabase.from('operational_expenses').select('*').order('date', { ascending: false }),
+          supabase.from('properties').select('*').limit(1)
+        ]);
+
+                if (roomsRes.data) {
+          setRooms(roomsRes.data.map((r: any) => ({ ...r, propertyId: r.property_id, roomNumber: r.room_number, pricePerMonth: r.price_per_month })));
+        }
+        if (tenantsRes.data) {
+          setTenants(tenantsRes.data.map((t: any) => ({ ...t, roomId: t.room_id, roomNumber: t.room_number, entryDate: t.entry_date })));
+        }
+        if (paymentsRes.data) {
+          setPayments(paymentsRes.data.map((p: any) => ({ ...p, tenantId: p.tenant_id, roomId: p.room_id, dueDate: p.due_date, paymentMethod: p.payment_method, paymentDate: p.payment_date })));
+        }
+        if (employeesRes.data) {
+          setEmployees(employeesRes.data);
+        }
+        if (expensesRes.data) {
+          setExpenses(expensesRes.data);
+        }
+        if (propertiesRes.data && propertiesRes.data.length > 0) {
+          const p = propertiesRes.data[0];
+          setProperty({ ...p, totalRooms: p.total_rooms });
+        } else {
+          setProperty(mockProperty as any);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
   const [editingRoom, setEditingRoom] = useState<any | null>(null);
+  const [isAddingRoom, setIsAddingRoom] = useState(false);
+  const [isEditingProperty, setIsEditingProperty] = useState(false);
+  const [isAddingTenant, setIsAddingTenant] = useState(false);
+  const [isAddingExpense, setIsAddingExpense] = useState(false);
+  const [isAddingEmployee, setIsAddingEmployee] = useState(false);
   const [subscriptionPlan, setSubscriptionPlan] = useState<'1' | '6' | '12'>('1');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
@@ -28,10 +85,17 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
   };
 
-  const overduePayments = mockPayments.filter(p => p.status === 'overdue');
-  const recentPayments = mockPayments.filter(p => p.status === 'paid').slice(0, 5);
-  const totalOperational = mockExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const netProfit = mockStats.totalIncome - totalOperational;
+    const stats = {
+    totalIncome: payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0),
+    pendingPayments: payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0),
+    activeTenants: tenants.filter(t => t.status === 'active').length,
+    availableRooms: rooms.filter(r => r.status === 'available').length
+  };
+
+  const overduePayments = payments.filter(p => p.status === 'overdue');
+  const recentPayments = payments.filter(p => p.status === 'paid').slice(0, 5);
+  const totalOperational = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const netProfit = stats.totalIncome - totalOperational;
 
   const NavItem = ({ tab, icon: Icon, label }: { tab: Tab, icon: any, label: string }) => {
     const isActive = activeTab === tab;
@@ -56,7 +120,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
       <div className="flex justify-between items-center">
         <div>
           <h1 className="font-heading text-2xl font-bold text-text-main">Dashboard Utama</h1>
-          <p className="text-text-sec text-sm mt-1">{mockProperty.name} • {mockProperty.totalRooms} Total Kamar</p>
+          <p className="text-text-sec text-sm mt-1">{(property || mockProperty).name} • {(property || mockProperty).totalRooms} Total Kamar</p>
         </div>
       </div>
 
@@ -68,7 +132,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
               <TrendingUp className="w-4 h-4 text-[#34C759]" />
             </div>
           </div>
-          <p className="font-heading text-2xl lg:text-3xl font-bold text-text-main mb-1">{formatCurrency(mockStats.totalIncome)}</p>
+          <p className="font-heading text-2xl lg:text-3xl font-bold text-text-main mb-1">{formatCurrency(stats.totalIncome)}</p>
         </div>
 
         <div className="bg-ios-card rounded-[24px] p-6 border border-border-subtle shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
@@ -98,7 +162,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
           {overduePayments.length > 0 ? (
             <div className="space-y-3">
               {overduePayments.map(payment => {
-                const tenant = mockTenants.find(t => t.id === payment.tenantId);
+                const tenant = tenants.find(t => t.id === payment.tenantId);
                 return (
                   <div key={payment.id} className="bg-ios-card rounded-[20px] p-4 flex items-center justify-between border border-[#FF3B30]/20 hover:border-[#FF3B30]/50 transition-colors shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
                     <div className="flex items-center gap-3">
@@ -127,7 +191,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
           </div>
           <div className="space-y-3">
             {recentPayments.map(payment => {
-              const tenant = mockTenants.find(t => t.id === payment.tenantId);
+              const tenant = tenants.find(t => t.id === payment.tenantId);
               return (
                 <div key={payment.id} className="bg-ios-card rounded-[20px] p-4 flex items-center justify-between border border-border-subtle hover:border-border-subtle/80 transition-colors shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
                   <div className="flex items-center gap-3">
@@ -165,10 +229,10 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
 
       <div className="bg-ios-card rounded-[24px] p-6 border border-border-subtle shadow-[0_4px_20px_rgba(0,0,0,0.02)] mb-8 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
          <div>
-            <h2 className="font-heading font-bold text-xl text-text-main mb-2">{mockProperty.name}</h2>
-            <p className="text-text-sec flex items-center gap-2 text-sm mb-4"><MapPin className="w-4 h-4"/> {mockProperty.address}</p>
+            <h2 className="font-heading font-bold text-xl text-text-main mb-2">{(property || mockProperty).name}</h2>
+            <p className="text-text-sec flex items-center gap-2 text-sm mb-4"><MapPin className="w-4 h-4"/> {(property || mockProperty).address}</p>
             <div className="flex flex-wrap gap-2">
-              {mockProperty.facilities.map((f, i) => (
+              {(property || mockProperty).facilities.map((f, i) => (
                 <span key={i} className="bg-bg-subtle text-text-sec px-3 py-1 rounded-full text-xs border border-border-subtle">{f}</span>
               ))}
             </div>
@@ -176,11 +240,11 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
          <div className="flex gap-6">
             <div className="text-center">
               <p className="text-text-sec text-xs mb-1">Total Kamar</p>
-              <p className="font-heading font-bold text-2xl text-text-main">{mockProperty.totalRooms}</p>
+              <p className="font-heading font-bold text-2xl text-text-main">{(property || mockProperty).totalRooms}</p>
             </div>
             <div className="text-center">
               <p className="text-text-sec text-xs mb-1">Tersedia</p>
-              <p className="font-heading font-bold text-2xl text-[#34C759]">{mockStats.availableRooms}</p>
+              <p className="font-heading font-bold text-2xl text-[#34C759]">{stats.availableRooms}</p>
             </div>
          </div>
       </div>
@@ -238,8 +302,8 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mockTenants.map(tenant => {
-          const payment = mockPayments.find(p => p.tenantId === tenant.id);
+        {tenants.map(tenant => {
+          const payment = payments.find(p => p.tenantId === tenant.id);
           return (
             <div 
               key={tenant.id} 
@@ -286,7 +350,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
       <div className="bg-ios-card rounded-[24px] p-6 border border-border-subtle shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col md:flex-row gap-8">
          <div className="flex-1">
            <p className="text-sm text-text-sec mb-1">Total Pemasukan Sewa</p>
-           <p className="font-heading text-2xl font-bold text-[#34C759]">{formatCurrency(mockStats.totalIncome)}</p>
+           <p className="font-heading text-2xl font-bold text-[#34C759]">{formatCurrency(stats.totalIncome)}</p>
          </div>
          <div className="hidden md:block w-px bg-border-subtle"></div>
          <div className="flex-1">
@@ -304,8 +368,8 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
          <div className="space-y-4">
            <h3 className="font-heading font-bold text-lg text-text-main flex items-center gap-2"><ArrowDownRight className="w-5 h-5 text-[#FF3B30]" /> Pengeluaran Operasional</h3>
            <div className="bg-ios-card rounded-[24px] border border-border-subtle shadow-[0_4px_20px_rgba(0,0,0,0.02)] overflow-hidden">
-             {mockExpenses.map((expense, idx) => (
-               <div key={expense.id} className={`p-4 flex items-center justify-between ${idx !== mockExpenses.length - 1 ? 'border-b border-border-subtle' : ''}`}>
+             {expenses.map((expense, idx) => (
+               <div key={expense.id} className={`p-4 flex items-center justify-between ${idx !== expenses.length - 1 ? 'border-b border-border-subtle' : ''}`}>
                  <div className="flex items-center gap-4">
                    <div className="w-10 h-10 rounded-full bg-[#FF3B30]/10 flex items-center justify-center text-[#FF3B30]">
                      {expense.category === 'salary' && <Users className="w-5 h-5" />}
@@ -325,8 +389,8 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
          <div className="space-y-4">
            <h3 className="font-heading font-bold text-lg text-text-main flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-[#34C759]" /> Transaksi / Invoice Sewa</h3>
            <div className="bg-ios-card rounded-[24px] border border-border-subtle shadow-[0_4px_20px_rgba(0,0,0,0.02)] overflow-hidden">
-             {mockPayments.map((payment, idx, arr) => {
-                const tenant = mockTenants.find(t => t.id === payment.tenantId);
+             {payments.map((payment, idx, arr) => {
+                const tenant = tenants.find(t => t.id === payment.tenantId);
                 return (
                   <div key={payment.id} className={`p-4 flex items-center justify-between ${idx !== arr.length - 1 ? 'border-b border-border-subtle' : ''}`}>
                     <div className="flex items-center gap-4">
@@ -362,13 +426,13 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
     >
       <div className="flex justify-between items-center mb-6">
         <h1 className="font-heading text-2xl font-bold text-text-main">Manajemen Pegawai</h1>
-        <button className="bg-text-main text-ios-bg px-4 py-2 rounded-full text-sm font-semibold shadow-sm hover:opacity-80 transition-colors">
+        <button onClick={() => setIsAddingEmployee(true)} className="bg-text-main text-ios-bg px-4 py-2 rounded-full text-sm font-semibold shadow-sm hover:opacity-80 transition-colors">
           Tambah Pegawai
         </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mockEmployees.map(employee => (
+        {employees.map(employee => (
           <div key={employee.id} className="bg-ios-card rounded-[24px] p-5 border border-border-subtle shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex justify-between items-center">
             <div className="flex gap-4 items-center">
               <img src={employee.avatar} alt={employee.name} className="w-12 h-12 rounded-full object-cover border border-border-subtle" />
@@ -549,9 +613,9 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               className="fixed bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 left-0 right-0 w-full md:max-w-md bg-ios-card md:rounded-[32px] rounded-t-[32px] p-8 z-[70] border border-border-subtle"
             >
-               {mockTenants.find(t => t.id === selectedTenant) && (() => {
-                  const tenant = mockTenants.find(t => t.id === selectedTenant)!;
-                  const payment = mockPayments.find(p => p.tenantId === tenant.id);
+               {tenants.find(t => t.id === selectedTenant) && (() => {
+                  const tenant = tenants.find(t => t.id === selectedTenant)!;
+                  const payment = payments.find(p => p.tenantId === tenant.id);
                   return (
                     <div>
                       <div className="flex items-center gap-4 mb-6">
@@ -623,7 +687,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
                  <button onClick={() => setEditingRoom(null)} className="p-2 text-text-sec hover:bg-bg-subtle rounded-full transition-colors"><X className="w-5 h-5"/></button>
               </div>
               
-              <form onSubmit={(e) => {
+                            <form onSubmit={async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
                 const type = formData.get('type') as string;
@@ -632,8 +696,20 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
                 const facilitiesStr = formData.get('facilities') as string;
                 const facilities = facilitiesStr.split(',').map(f => f.trim()).filter(f => f);
                 
-                setRooms(prev => prev.map(r => r.id === editingRoom.id ? { ...r, type, pricePerMonth: price, status, facilities } : r));
-                setEditingRoom(null);
+                try {
+                  const { error } = await supabase
+                    .from('rooms')
+                    .update({ type, price_per_month: price, status, facilities })
+                    .eq('id', editingRoom.id);
+                    
+                  if (error) throw error;
+                  
+                  setRooms(prev => prev.map(r => r.id === editingRoom.id ? { ...r, type, pricePerMonth: price, status, facilities } : r));
+                  setEditingRoom(null);
+                } catch (err) {
+                  console.error('Error updating room:', err);
+                  alert('Gagal menyimpan perubahan.');
+                }
               }} className="space-y-4">
                  <div>
                     <label className="block text-sm font-medium text-text-main mb-2">Tipe Kamar</label>
@@ -656,6 +732,314 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
                     <textarea name="facilities" defaultValue={editingRoom.facilities.join(', ')} required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary min-h-[80px] resize-none"></textarea>
                  </div>
                  <button type="submit" className="w-full bg-primary text-ios-bg font-bold rounded-[20px] py-4 mt-6 hover:opacity-90 transition-opacity">Simpan Perubahan</button>
+              </form>
+            </motion.div>
+          </>
+        )}
+
+
+        {isEditingProperty && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm" onClick={() => setIsEditingProperty(false)} />
+            <motion.div initial={{ y: '100%', opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }} className="fixed bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 left-0 right-0 w-full md:max-w-md bg-ios-card md:rounded-[32px] rounded-t-[32px] p-8 z-[70] border border-border-subtle overflow-y-auto max-h-[90vh]">
+              <div className="flex justify-between items-center mb-6">
+                 <h2 className="font-heading font-bold text-xl text-text-main">Edit Properti</h2>
+                 <button onClick={() => setIsEditingProperty(false)} className="p-2 text-text-sec hover:bg-bg-subtle rounded-full transition-colors"><X className="w-5 h-5"/></button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const name = formData.get('name') as string;
+                const address = formData.get('address') as string;
+                const totalRooms = Number(formData.get('totalRooms'));
+                const facilitiesStr = formData.get('facilities') as string;
+                const facilities = facilitiesStr.split(',').map(f => f.trim()).filter(f => f);
+                
+                try {
+                  const { error } = await supabase.from('properties').update({ name, address, total_rooms: totalRooms, facilities }).eq('id', (property || mockProperty).id);
+                  if (error) throw error;
+                  setProperty(prev => prev ? { ...prev, name, address, totalRooms, facilities } : null);
+                  setIsEditingProperty(false);
+                } catch (err) {
+                  console.error(err);
+                  alert('Gagal menyimpan perubahan.');
+                }
+              }} className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Nama Kos</label>
+                    <input name="name" defaultValue={(property || mockProperty).name} required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Alamat</label>
+                    <input name="address" defaultValue={(property || mockProperty).address} required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Total Kamar</label>
+                    <input name="totalRooms" type="number" defaultValue={(property || mockProperty).totalRooms} required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Fasilitas (pisahkan dengan koma)</label>
+                    <input name="facilities" defaultValue={(property || mockProperty).facilities.join(', ')} className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 
+                 <div className="flex gap-4 mt-6">
+                   <button type="button" onClick={async () => {
+                      if (!confirm('Apakah anda yakin ingin menghapus kamar ini?')) return;
+                      try {
+                        const { error } = await supabase.from('rooms').delete().eq('id', editingRoom.id);
+                        if (error) throw error;
+                        setRooms(prev => prev.filter(r => r.id !== editingRoom.id));
+                        setEditingRoom(null);
+                      } catch(err) {
+                        console.error(err);
+                        alert('Gagal menghapus kamar');
+                      }
+                   }} className="flex-1 bg-[#FF3B30]/10 text-[#FF3B30] font-bold rounded-[20px] py-4">Hapus</button>
+                   <button type="submit" className="flex-1 bg-primary text-white font-bold rounded-[20px] py-4">Simpan</button>
+                 </div>
+              </form>
+
+            </motion.div>
+          </>
+        )}
+
+        {isAddingRoom && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm" onClick={() => setIsAddingRoom(false)} />
+            <motion.div initial={{ y: '100%', opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }} className="fixed bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 left-0 right-0 w-full md:max-w-md bg-ios-card md:rounded-[32px] rounded-t-[32px] p-8 z-[70] border border-border-subtle overflow-y-auto max-h-[90vh]">
+              <div className="flex justify-between items-center mb-6">
+                 <h2 className="font-heading font-bold text-xl text-text-main">Tambah Kamar</h2>
+                 <button onClick={() => setIsAddingRoom(false)} className="p-2 text-text-sec hover:bg-bg-subtle rounded-full transition-colors"><X className="w-5 h-5"/></button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const roomNumber = formData.get('roomNumber') as string;
+                const type = formData.get('type') as string;
+                const price = Number(formData.get('price'));
+                const status = formData.get('status') as any;
+                const facilitiesStr = formData.get('facilities') as string;
+                const facilities = facilitiesStr.split(',').map(f => f.trim()).filter(f => f);
+                
+                try {
+                  const { data, error } = await supabase.from('rooms').insert({
+                      property_id: (property || mockProperty).id,
+                      room_number: roomNumber,
+                      type,
+                      price_per_month: price,
+                      status,
+                      facilities
+                  }).select().single();
+                  
+                  if (error) throw error;
+                  setRooms(prev => [...prev, { ...data, propertyId: data.property_id, roomNumber: data.room_number, pricePerMonth: data.price_per_month }]);
+                  setIsAddingRoom(false);
+                } catch (err) {
+                  console.error(err);
+                  alert('Gagal menambah kamar.');
+                }
+              }} className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Nomor Kamar</label>
+                    <input name="roomNumber" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Tipe Kamar</label>
+                    <input name="type" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Harga per Bulan (Rp)</label>
+                    <input name="price" type="number" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Status</label>
+                    <select name="status" className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary">
+                      <option value="available">Kosong</option>
+                      <option value="occupied">Terisi</option>
+                      <option value="maintenance">Perbaikan</option>
+                    </select>
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Fasilitas (pisahkan dengan koma)</label>
+                    <input name="facilities" className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <button type="submit" className="w-full bg-primary text-white font-bold rounded-[20px] py-4 mt-6">Tambah Kamar</button>
+              </form>
+            </motion.div>
+          </>
+        )}
+
+        {isAddingTenant && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm" onClick={() => setIsAddingTenant(false)} />
+            <motion.div initial={{ y: '100%', opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }} className="fixed bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 left-0 right-0 w-full md:max-w-md bg-ios-card md:rounded-[32px] rounded-t-[32px] p-8 z-[70] border border-border-subtle overflow-y-auto max-h-[90vh]">
+              <div className="flex justify-between items-center mb-6">
+                 <h2 className="font-heading font-bold text-xl text-text-main">Tambah Penghuni</h2>
+                 <button onClick={() => setIsAddingTenant(false)} className="p-2 text-text-sec hover:bg-bg-subtle rounded-full transition-colors"><X className="w-5 h-5"/></button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const name = formData.get('name') as string;
+                const phone = formData.get('phone') as string;
+                const ktp = formData.get('ktp') as string;
+                const roomId = formData.get('roomId') as string;
+                const entryDate = formData.get('entryDate') as string;
+                
+                try {
+                  const room = rooms.find(r => r.id === roomId);
+                  const { data, error } = await supabase.from('tenants').insert({
+                      name, phone, ktp, room_id: roomId, room_number: room?.roomNumber, entry_date: entryDate, status: 'active', avatar: `https://i.pravatar.cc/150?u=${name}`
+                  }).select().single();
+                  
+                  if (error) throw error;
+                  setTenants(prev => [...prev, { ...data, roomId: data.room_id, roomNumber: data.room_number, entryDate: data.entry_date }]);
+                  
+                  // Update room status
+                  await supabase.from('rooms').update({ status: 'occupied' }).eq('id', roomId);
+                  setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: 'occupied' } : r));
+                  
+                  setIsAddingTenant(false);
+                } catch (err) {
+                  console.error(err);
+                  alert('Gagal menambah penghuni.');
+                }
+              }} className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Nama Lengkap</label>
+                    <input name="name" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Nomor HP</label>
+                    <input name="phone" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">No. KTP</label>
+                    <input name="ktp" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Pilih Kamar (Tersedia)</label>
+                    <select name="roomId" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary">
+                      {rooms.filter(r => r.status === 'available').map(r => (
+                          <option key={r.id} value={r.id}>Kamar {r.roomNumber} - {r.type}</option>
+                      ))}
+                    </select>
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Tanggal Masuk</label>
+                    <input name="entryDate" type="date" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <button type="submit" className="w-full bg-primary text-white font-bold rounded-[20px] py-4 mt-6">Tambah Penghuni</button>
+              </form>
+            </motion.div>
+          </>
+        )}
+        
+        {isAddingExpense && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm" onClick={() => setIsAddingExpense(false)} />
+            <motion.div initial={{ y: '100%', opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }} className="fixed bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 left-0 right-0 w-full md:max-w-md bg-ios-card md:rounded-[32px] rounded-t-[32px] p-8 z-[70] border border-border-subtle overflow-y-auto max-h-[90vh]">
+              <div className="flex justify-between items-center mb-6">
+                 <h2 className="font-heading font-bold text-xl text-text-main">Catat Pengeluaran</h2>
+                 <button onClick={() => setIsAddingExpense(false)} className="p-2 text-text-sec hover:bg-bg-subtle rounded-full transition-colors"><X className="w-5 h-5"/></button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const description = formData.get('description') as string;
+                const amount = Number(formData.get('amount'));
+                const category = formData.get('category') as any;
+                const date = formData.get('date') as string;
+                
+                try {
+                  const { data, error } = await supabase.from('operational_expenses').insert({
+                      description, amount, category, date
+                  }).select().single();
+                  
+                  if (error) throw error;
+                  setExpenses(prev => [data, ...prev]);
+                  setIsAddingExpense(false);
+                } catch (err) {
+                  console.error(err);
+                  alert('Gagal menambah pengeluaran.');
+                }
+              }} className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Deskripsi</label>
+                    <input name="description" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Jumlah (Rp)</label>
+                    <input name="amount" type="number" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Kategori</label>
+                    <select name="category" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary">
+                      <option value="salary">Gaji Pegawai</option>
+                      <option value="maintenance">Perawatan/Perbaikan</option>
+                      <option value="utilities">Tagihan (Listrik/Air/Internet)</option>
+                      <option value="other">Lainnya</option>
+                    </select>
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Tanggal</label>
+                    <input name="date" type="date" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <button type="submit" className="w-full bg-primary text-white font-bold rounded-[20px] py-4 mt-6">Simpan Pengeluaran</button>
+              </form>
+            </motion.div>
+          </>
+        )}
+
+        {isAddingEmployee && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm" onClick={() => setIsAddingEmployee(false)} />
+            <motion.div initial={{ y: '100%', opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }} className="fixed bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 left-0 right-0 w-full md:max-w-md bg-ios-card md:rounded-[32px] rounded-t-[32px] p-8 z-[70] border border-border-subtle overflow-y-auto max-h-[90vh]">
+              <div className="flex justify-between items-center mb-6">
+                 <h2 className="font-heading font-bold text-xl text-text-main">Tambah Pegawai</h2>
+                 <button onClick={() => setIsAddingEmployee(false)} className="p-2 text-text-sec hover:bg-bg-subtle rounded-full transition-colors"><X className="w-5 h-5"/></button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const name = formData.get('name') as string;
+                const role = formData.get('role') as string;
+                const salary = Number(formData.get('salary'));
+                const status = formData.get('status') as any;
+                
+                try {
+                  const { data, error } = await supabase.from('employees').insert({
+                      name, role, salary, status, avatar: `https://i.pravatar.cc/150?u=${name}`
+                  }).select().single();
+                  
+                  if (error) throw error;
+                  setEmployees(prev => [...prev, data]);
+                  setIsAddingEmployee(false);
+                } catch (err) {
+                  console.error(err);
+                  alert('Gagal menambah pegawai.');
+                }
+              }} className="space-y-4">
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Nama Lengkap</label>
+                    <input name="name" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Jabatan / Peran</label>
+                    <input name="role" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Gaji Bulanan (Rp)</label>
+                    <input name="salary" type="number" required className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary" />
+                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-text-main mb-2">Status</label>
+                    <select name="status" className="w-full bg-bg-subtle border border-border-subtle rounded-[16px] px-4 py-3 text-text-main focus:outline-none focus:border-primary">
+                      <option value="active">Aktif</option>
+                      <option value="inactive">Non-aktif</option>
+                    </select>
+                 </div>
+                 <button type="submit" className="w-full bg-primary text-white font-bold rounded-[20px] py-4 mt-6">Tambah Pegawai</button>
               </form>
             </motion.div>
           </>
