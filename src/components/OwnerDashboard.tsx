@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Home, Users, Wallet, LogOut, Building2, TrendingUp, Settings, Wrench, ArrowUpRight, AlertCircle,
-  CreditCard, Moon, Sun, ArrowDownRight, BedDouble, Info, CheckCircle2, Search, MapPin, FileText, X
+  CreditCard, Moon, Sun, ArrowDownRight, BedDouble, Info, CheckCircle2, Search, MapPin, FileText, X, Crown
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { mockTenants, mockPayments, mockStats, mockEmployees, mockExpenses, mockOwner, mockProperty, mockRooms } from '../data';
@@ -13,13 +13,16 @@ interface OwnerDashboardProps {
   isDarkMode: boolean;
 }
 
-type Tab = 'home' | 'property' | 'tenants' | 'finance' | 'employees' | 'settings';
+type Tab = 'home' | 'property' | 'tenants' | 'finance' | 'employees' | 'settings' | 'subscription';
 
 export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }: OwnerDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [selectedTenant, setSelectedTenant] = useState<string | null>(null);
   const [rooms, setRooms] = useState(mockRooms);
   const [editingRoom, setEditingRoom] = useState<any | null>(null);
+  const [subscriptionPlan, setSubscriptionPlan] = useState<'1' | '6' | '12'>('1');
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
@@ -384,6 +387,77 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
     </motion.div>
   );
 
+  const renderSubscription = () => (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="max-w-4xl mx-auto w-full py-8 space-y-6"
+    >
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="font-heading text-2xl font-bold text-text-main">Berlangganan</h1>
+      </div>
+
+      <div className="bg-ios-card rounded-[24px] p-8 border border-border-subtle shadow-lg mb-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 rounded-[16px] bg-primary/10 flex items-center justify-center">
+              <Crown className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-heading font-bold text-2xl text-text-main">Akses Penuh Manajemen Kost</h2>
+              <p className="text-text-sec">Status: <span className="text-[#FF9F0A] font-bold">Uji Coba Gratis</span></p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div 
+              onClick={() => setSubscriptionPlan('1')}
+              className={`p-6 rounded-[20px] border-2 cursor-pointer transition-all ${subscriptionPlan === '1' ? 'border-primary bg-primary/5' : 'border-border-subtle hover:border-text-sec/30'}`}
+            >
+              <h3 className="font-bold text-lg mb-2 text-text-main">1 Bulan</h3>
+              <p className="font-heading font-bold text-2xl text-text-main">Rp 15.000<span className="text-sm font-normal text-text-sec">/bln</span></p>
+            </div>
+            <div 
+              onClick={() => setSubscriptionPlan('6')}
+              className={`p-6 rounded-[20px] border-2 cursor-pointer transition-all ${subscriptionPlan === '6' ? 'border-primary bg-primary/5' : 'border-border-subtle hover:border-text-sec/30'}`}
+            >
+              <h3 className="font-bold text-lg mb-2 text-text-main">6 Bulan</h3>
+              <p className="font-heading font-bold text-2xl text-text-main">Rp 90.000<span className="text-sm font-normal text-text-sec">/total</span></p>
+            </div>
+            <div 
+              onClick={() => setSubscriptionPlan('12')}
+              className={`p-6 rounded-[20px] border-2 cursor-pointer transition-all ${subscriptionPlan === '12' ? 'border-primary bg-primary/5' : 'border-border-subtle hover:border-text-sec/30'}`}
+            >
+              <h3 className="font-bold text-lg mb-2 text-text-main">12 Bulan</h3>
+              <p className="font-heading font-bold text-2xl text-text-main">Rp 180.000<span className="text-sm font-normal text-text-sec">/total</span></p>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => setIsPaymentModalOpen(true)}
+            className="w-full md:w-auto px-8 py-4 bg-primary text-white rounded-full font-bold shadow-lg hover:shadow-xl hover:opacity-90 transition-all flex justify-center items-center gap-2"
+          >
+            Bayar dengan Mayar.id <ArrowUpRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+         <div className="bg-bg-subtle p-6 rounded-[24px] border border-border-subtle">
+            <h4 className="font-bold text-text-main mb-4 flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-primary"/> Fitur Premium</h4>
+            <ul className="space-y-3 text-text-sec text-sm">
+               <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary"></div> Manajemen tanpa batas kamar</li>
+               <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary"></div> Laporan keuangan otomatis</li>
+               <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary"></div> Kirim tagihan via WhatsApp</li>
+               <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary"></div> Integrasi payment gateway untuk penyewa</li>
+            </ul>
+         </div>
+      </div>
+    </motion.div>
+  );
+
   return (
     <div className="min-h-screen bg-ios-bg flex overflow-hidden">
       {/* Desktop Sidebar */}
@@ -409,6 +483,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
         </nav>
 
         <div className="pt-6 border-t border-border-subtle">
+          <NavItem tab="subscription" icon={Crown} label="Berlangganan" />
           <button className="w-full flex items-center gap-4 px-4 py-3 rounded-[20px] text-text-sec hover:bg-bg-hover font-medium transition-colors mb-2">
             <Settings className="w-6 h-6" />
             <span className="text-[15px] hidden lg:block">Pengaturan</span>
@@ -437,6 +512,7 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
           {activeTab === 'tenants' && renderTenants()}
           {activeTab === 'finance' && renderFinance()}
           {activeTab === 'employees' && renderEmployees()}
+          {activeTab === 'subscription' && renderSubscription()}
         </AnimatePresence>
       </div>
 
@@ -583,6 +659,59 @@ export default function OwnerDashboard({ onLogout, toggleDarkMode, isDarkMode }:
               </form>
             </motion.div>
           </>
+        )}
+
+        {isPaymentModalOpen && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-ios-card rounded-[32px] p-6 w-full max-w-md shadow-2xl relative"
+            >
+              {!paymentSuccess ? (
+                <>
+                  <button onClick={() => setIsPaymentModalOpen(false)} className="absolute top-4 right-4 p-2 text-text-sec hover:bg-bg-subtle rounded-full transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                  
+                  <div className="text-center mb-6 mt-4">
+                    <img src="https://ui-avatars.com/api/?name=Mayar&background=007AFF&color=fff&rounded=true" alt="Mayar.id" className="w-16 h-16 mx-auto mb-4" />
+                    <h2 className="font-heading font-bold text-xl text-text-main">Pembayaran Mayar.id</h2>
+                    <p className="text-sm text-text-sec">Pilih metode pembayaran</p>
+                  </div>
+                  
+                  <div className="space-y-4">
+                     {['QRIS (Gratis Biaya Admin)', 'BCA Virtual Account', 'Mandiri Virtual Account', 'E-Wallet (GoPay/OVO)'].map((method, idx) => (
+                       <button 
+                         key={idx}
+                         onClick={() => {
+                           setPaymentSuccess(true);
+                           setTimeout(() => {
+                             setPaymentSuccess(false);
+                             setIsPaymentModalOpen(false);
+                             alert('Pembayaran Berhasil! Akun Anda sekarang dalam mode Premium.');
+                           }, 2000);
+                         }}
+                         className="w-full bg-bg-subtle border border-border-subtle p-4 rounded-[16px] text-left hover:bg-primary/5 hover:border-primary transition-all font-medium text-text-main flex justify-between items-center"
+                       >
+                         {method}
+                         <ArrowUpRight className="w-4 h-4 text-text-sec" />
+                       </button>
+                     ))}
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                   <div className="w-20 h-20 bg-[#34C759]/10 rounded-full flex items-center justify-center mb-2">
+                     <CheckCircle2 className="w-10 h-10 text-[#34C759]" />
+                   </div>
+                   <h2 className="font-heading font-bold text-2xl text-text-main">Pembayaran Berhasil!</h2>
+                   <p className="text-sm text-text-sec">Terima kasih, pembayaran langganan Anda telah kami terima.</p>
+                </div>
+              )}
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

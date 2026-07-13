@@ -1,4 +1,4 @@
-export type ViewState = 'landing' | 'owner' | 'tenant';
+export type ViewState = 'landing' | 'owner' | 'tenant' | 'login' | 'register';
 
 export interface Owner {
   id: string;
